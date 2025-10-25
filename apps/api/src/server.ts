@@ -13,7 +13,7 @@ dotenv.config({ path: path.resolve(__dirname, '../.env.local') });
 import { Pool } from 'pg'; // PostgreSQL
 import axios from 'axios';
 import { Octokit } from "@octokit/rest";
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
 import pgSessionImport from 'connect-pg-simple';
 import crypto from 'crypto';
@@ -40,6 +40,98 @@ pool.query('SELECT NOW()', (err, res) => {
 
 // Create app instance
 const app = express()
+
+// Helper function for calculating urgency score of PRs
+function calculateUrgencyScore(prData, authenticatedUserId) {
+  // --- Define Score Levels ---
+  const SCORE_CRITICAL = 1000;
+  const SCORE_RE_REVIEW = 900;
+  const SCORE_STALE = 800;
+  const SCORE_SMALL_NEW = 700;
+  const SCORE_NORMAL = 500;
+  const SCORE_LARGE = 300;
+  const SCORE_DRAFT = 10;
+
+  // --- 1. Check Draft Status (Lowest Priority) ---
+  if (prData.draft || prData.title.toLowerCase().includes('[wip]')) {
+    return SCORE_DRAFT;
+  }
+
+  // --- 2. Check Explicit Urgency Markers (Highest Priority) ---
+  const criticalKeywords = ['hotfix', 'critical', 'urgent', 'bugfix', 'fix:']; // Added colon for conventional commits
+  const criticalLabels = ['critical', 'bug', 'p0', 'security', 'hotfix'];
+
+  const titleLower = prData.title.toLowerCase();
+  if (criticalKeywords.some(keyword => titleLower.includes(keyword)) ||
+      prData.labels?.some(label => criticalLabels.includes(label.name.toLowerCase()))) {
+    return SCORE_CRITICAL;
+  }
+
+  // --- 3. Check for "Ready for Re-Review" (High Priority) ---
+  // This requires looking through review and commit history
+  let needsReReview = false;
+  if (prData.reviews && prData.commits) {
+    // Find the latest "CHANGES_REQUESTED" review *by the current user*
+    const lastChangesRequestedReview = prData.reviews
+      .filter(review => review.user?.id === authenticatedUserId && review.state === 'CHANGES_REQUESTED')
+      .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())[0];
+
+    if (lastChangesRequestedReview) {
+      // Check if there are any commits *after* that review
+      const reviewTimestamp = new Date(lastChangesRequestedReview.submitted_at).getTime();
+      const hasNewerCommits = prData.commits.some(commit => new Date(commit.commit.committer.date).getTime() > reviewTimestamp); // 
+      if (hasNewerCommits) {
+        needsReReview = true;
+      }
+    }
+  }
+  if (needsReReview) {
+    return SCORE_RE_REVIEW;
+  }
+
+  // --- 4. Check for Staleness (Medium-High Priority) ---
+  const hoursSinceCreation = (new Date().getTime() - new Date(prData.created_at).getTime()) / (1000 * 60 * 60);
+  const hasReviews = prData.reviews && prData.reviews.length > 0; // Simplified check
+
+  // Prioritize if > 24 hours old AND has no reviews yet
+  if (hoursSinceCreation > 24 && !hasReviews) {
+     return SCORE_STALE;
+  }
+
+  // --- 5. Check Size (Prioritize Small, Deprioritize Large) ---
+  const totalLinesChanged = (prData.additions || 0) + (prData.deletions || 0);
+
+  // If it hasn't hit higher priorities, consider size
+  if (totalLinesChanged <= 100) { // Small PR - quick win (if relatively new)
+      // Slightly boost newer small PRs, give stale ones precedence
+      if (hoursSinceCreation <= 24 && !hasReviews) {
+          return SCORE_SMALL_NEW;
+      }
+  }
+  if (totalLinesChanged > 500) { // Large PR - lower priority
+     return SCORE_LARGE;
+  }
+
+  // --- 6. Default Score (Normal Priority) ---
+  return SCORE_NORMAL;
+}
+
+// Helper function to get get urgency score for all PRs
+async function prioritizePRs(fetchedPRs, authenticatedUserId) {
+  const scoredPRs = await Promise.all(fetchedPRs.map(async pr => {
+    // Note: You might need to fetch additional details (reviews, commits, size)
+    // if they weren't included in the initial fetch.
+    // const detailedPRData = await fetchFullPRDetails(pr.url); // Hypothetical function
+
+    const score = calculateUrgencyScore(pr /* or detailedPRData */, authenticatedUserId);
+    return { ...pr, urgencyScore: score };
+  }));
+
+  // Sort PRs by score, descending (highest priority first)
+  scoredPRs.sort((a, b) => b.urgencyScore - a.urgencyScore);
+
+  return scoredPRs;
+}
 
 // Helper function to get GitHub user info
 async function getGitHubUserInfo(token) {
@@ -106,7 +198,7 @@ app.use(session({
 }));
 
 // Middleware to ensure user is logged in
-const isAuthenticated = (req, res, next) => {
+const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
     console.log('--------------------');
     console.log('[AUTH MIDDLEWARE] Received cookies:', req.cookies);
     console.log('[AUTH MIDDLEWARE] Session data:', req.session);
@@ -121,11 +213,11 @@ const isAuthenticated = (req, res, next) => {
 };
 
 // Routes
-app.get('/', (req, res) => {
+app.get('/', (req: Request, res: Response) => {
     res.send('Hello from the backend API!');
 })
 
-app.get('/api/my-prs', isAuthenticated, async (req, res) => {
+app.get('/api/my-prs', isAuthenticated, async (req: Request, res: Response) => {
     console.log("Received request to get user PRs.");
 
     try {
@@ -146,18 +238,59 @@ app.get('/api/my-prs', isAuthenticated, async (req, res) => {
         const accessToken = userResult.rows[0].access_token;
 
         // Need to get owner name, and repo name
+        const GQL_QUERY = `
+            query GetMyPRs($queryString: String!) {
+                search(query: $queryString, type: ISSUE, first: 20) {
+                    edges {
+                        node {
+                            ... on PullRequest {
+                                id
+                                title
+                                url
+                                draft: isDraft
+                                created_at: createdAt
+                                updated_at: updatedAt
+                                repository {
+                                    nameWithOwner
+                                }
+                                author {
+                                    login
+                                    avatarUrl
+                                }
+
+                                # --- V2 DATA (PR SIZE) ---
+                                additions
+                                deletions
+                                changedFiles
+
+                                # --- V2 DATA (REVIEW STATUS) ---
+                                reviews(last: 5) {
+                                    nodes {
+                                        state
+                                        author {
+                                            login
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        `;
 
         // Get data from GitHub
         const octokit = new Octokit({ auth: accessToken });
-        const githubResponse = await octokit.request('GET /search/issues', {
-            q: 'is:pr is:open user:@me',
-            headers: {
-                'X-GitHub-Api-Version': '2022-11-28'
+        const githubResponse = await octokit.graphql(
+            GQL_QUERY,
+            {
+                queryString: "is:pr is:open review-requested:gaearon"
             }
-        });
+        );
 
         console.log("GitHub Response:", githubResponse);
-        res.status(200).json({ prs: githubResponse.data.items });
+        const prs = githubResponse.search.edges.map(edge => edge.node);
+        res.status(200).json({ prs: prs });
 
     } catch (error) {
         console.error("Failed to get PRs from GitHub:", error);
@@ -166,7 +299,7 @@ app.get('/api/my-prs', isAuthenticated, async (req, res) => {
 });
 
 // GitHub OAuth Callback Route
-app.get('/api/auth/github/callback', async (req, res) => {
+app.get('/api/auth/github/callback', async (req: Request, res: Response) => {
     // Callback logic
     console.log("Received callback from GitHub!");
 
@@ -180,7 +313,7 @@ app.get('/api/auth/github/callback', async (req, res) => {
     console.log("Original State (from session):", originalState);
 
     // Verify state
-    if (!originalState | !returnedState | originalState !== returnedState) {
+    if (!originalState || !returnedState || originalState !== returnedState) {
         console.error('State mismatch or missing state!');
         // Clear compromised session state
         if (req.session) {
@@ -291,8 +424,8 @@ app.get('/api/auth/github/callback', async (req, res) => {
 })
 
 // GitHub Login Route
-app.get('/api/auth/github/login', async (req, res) => {
-    // GitHub Login API for generating and storing state 
+app.get('/api/auth/github/login', async (req: Request, res: Response) => {
+    // GitHub Login API for generating and storing state
     console.log("GitHub Login API Called!");
 
     // Generate state

@@ -6,14 +6,27 @@ import { useEffect, useState } from 'react';
 interface PullRequest {
     id: number;
     title: string;
-    html_url: string;
-    user: {
-        login: string;
-        avatar_url: string;
-    };
-    repository_url: string;
-    created_at: string;
+    url: string;
     draft: boolean;
+    created_at: string;
+    updated_at: string;
+    repository: {
+        nameWithOwner: string;
+    }
+    author: {
+        login: string;
+        avatarUrl: string;
+    } | null;
+    additions: number;
+    deletions: number;
+    reviews: {
+        nodes: {
+            state: string;
+            author: {
+                login: string;
+            } | null;
+        }[];
+    };
 }
 
 // Helper function to show "X days ago"
@@ -96,8 +109,8 @@ export default function DashboardPage() {
                     >
                         {/* Column 1: Avatar */}
                         <img 
-                            src={pr.user.avatar_url}
-                            alt={pr.user.login}
+                            src={pr.author.avatarUrl}
+                            alt={pr.author.login}
                             className="w-10 h-10 rounded-full"
                         />
 
@@ -107,7 +120,7 @@ export default function DashboardPage() {
                             {/* Repo name + Draft Badge */}
                             <div className='flex justify-between items-center'>
                                 <p className="text-sm text-gray-500">
-                                    {getRepoName(pr.repository_url)}
+                                    {getRepoName(pr.repository.nameWithOwner)}
                                 </p>
                                 {pr.draft && (
                                     <span className="px-2 py-0.5 text-xs font-semibold text-gray-700 bg-gray-200 rounded-full">
@@ -117,7 +130,7 @@ export default function DashboardPage() {
                             </div>
                         </div>
                         <a
-                            href={pr.html_url}
+                            href={pr.url}
                             className="text-lg font-semibold text-blue-600 hover:underline"
                             target="_blank"
                             rel="noopener noreferrer"
@@ -127,7 +140,7 @@ export default function DashboardPage() {
 
                         {/* Author + Date (meta info) */}
                         <p className="text-sm text-gray-500 mt-1">
-                            Authored by <span className="font-medium text-gray-700">{pr.user.login}</span>
+                            Authored by <span className="font-medium text-gray-700">{pr.author.login}</span>
                             <span> &bull; {timeAgo(pr.created_at)} </span>
                         </p>
                     </div>

@@ -8,9 +8,19 @@
         "express": "^5.1.0"
     },
     "scripts": {
-        "dev": "node src/server.js",
-        "build": "next build --turbopack",
-        "start": "next start",
+        "dev": "nodemon --exec ts-node -esm src/server.ts",
+        "build": "tsc",
+        "start": "node dist/server.js",
         "lint": "next lint"
+    },
+    "devDependencies": {
+        "@types/connect-pg-simple": "^7.0.3",
+        "@types/express": "^5.0.4",
+        "@types/express-session": "^1.18.2",
+        "@types/node": "^20.19.23",
+        "@types/pg": "^8.15.5",
+        "nodemon": "^3.1.10",
+        "ts-node": "^10.9.2",
+        "typescript": "^5.9.3"
     }
 }
