@@ -18,6 +18,17 @@ import session from 'express-session';
 import pgSessionImport from 'connect-pg-simple';
 import crypto from 'crypto';
 import cors from 'cors';
+import { GitHubUser, GitHubPR } from '@repo/shared-types';
+
+// Extend express-session types to include custom session properties
+declare module 'express-session' {
+    interface SessionData {
+        userId: number;
+        oauth_state: string;
+        githubUsername: string;
+        githubId: number;
+    }
+}
 
 const pgSession = pgSessionImport(session);
 
@@ -27,7 +38,7 @@ const pool = new Pool({
     host: process.env.DB_HOST || 'localhost',
     database: process.env.DB_NAME || 'pr_hub_db',
     password: process.env.DB_PASSWORD || 'suicune20',
-    port: process.env.DB_PORT || 5433,
+    port: process.env.DB_PORT ? parseInt(process.env.DB_PORT) : 5433,
 });
 
 pool.query('SELECT NOW()', (err, res) => {
@@ -42,7 +53,7 @@ pool.query('SELECT NOW()', (err, res) => {
 const app = express()
 
 // Helper function for calculating urgency score of PRs
-function calculateUrgencyScore(prData, authenticatedUserId) {
+function calculateUrgencyScore(prData: GitHubPR, authenticatedUserGitHubLogin: string | undefined) {
   // --- Define Score Levels ---
   const SCORE_CRITICAL = 1000;
   const SCORE_RE_REVIEW = 900;
@@ -73,13 +84,13 @@ function calculateUrgencyScore(prData, authenticatedUserId) {
   if (prData.reviews && prData.commits) {
     // Find the latest "CHANGES_REQUESTED" review *by the current user*
     const lastChangesRequestedReview = prData.reviews
-      .filter(review => review.user?.id === authenticatedUserId && review.state === 'CHANGES_REQUESTED')
-      .sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime())[0];
+      .filter(review => review.author?.login === authenticatedUserGitHubLogin && review.state === 'CHANGES_REQUESTED')
+      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())[0];
 
     if (lastChangesRequestedReview) {
       // Check if there are any commits *after* that review
-      const reviewTimestamp = new Date(lastChangesRequestedReview.submitted_at).getTime();
-      const hasNewerCommits = prData.commits.some(commit => new Date(commit.commit.committer.date).getTime() > reviewTimestamp); // 
+      const reviewTimestamp = new Date(lastChangesRequestedReview.submittedAt).getTime();
+      const hasNewerCommits = prData.commits.some(commit => new Date(commit.commit.committedDate).getTime() > reviewTimestamp); // 
       if (hasNewerCommits) {
         needsReReview = true;
       }
@@ -116,16 +127,17 @@ function calculateUrgencyScore(prData, authenticatedUserId) {
   return SCORE_NORMAL;
 }
 
+
 // Helper function to get get urgency score for all PRs
-async function prioritizePRs(fetchedPRs, authenticatedUserId) {
-  const scoredPRs = await Promise.all(fetchedPRs.map(async pr => {
+function prioritizePRs(fetchedPRs: GitHubPR[], authenticatedUserGitHubLogin: string | undefined): GitHubPR[] {
+  const scoredPRs = fetchedPRs.map(pr => {
     // Note: You might need to fetch additional details (reviews, commits, size)
     // if they weren't included in the initial fetch.
     // const detailedPRData = await fetchFullPRDetails(pr.url); // Hypothetical function
 
-    const score = calculateUrgencyScore(pr /* or detailedPRData */, authenticatedUserId);
+    const score = calculateUrgencyScore(pr, authenticatedUserGitHubLogin);
     return { ...pr, urgencyScore: score };
-  }));
+  });
 
   // Sort PRs by score, descending (highest priority first)
   scoredPRs.sort((a, b) => b.urgencyScore - a.urgencyScore);
@@ -133,8 +145,10 @@ async function prioritizePRs(fetchedPRs, authenticatedUserId) {
   return scoredPRs;
 }
 
+
+
 // Helper function to get GitHub user info
-async function getGitHubUserInfo(token) {
+async function getGitHubUserInfo(token: number) {
     try {
         console.log("Fetching user info from GitHub...");
         const userResponse = await axios.get('https://api.github.com/user', {
@@ -146,13 +160,17 @@ async function getGitHubUserInfo(token) {
         console.log("GitHub user info received:", userResponse.data.login);
         return userResponse.data;
     } catch (error) {
-        console.error("Error fetching GitHub user info:", error.response?.data || error.message);
+        if (axios.isAxiosError(error)) {
+            console.error("GitHub API Error:", error.response?.data);
+        } else {
+            console.error("Unexpected error:", error);
+        }
         throw new Error('Could not fetch user information from GitHub.');
     }
 }  
 
 // Helper function for updating database when user logs in
-async function findOrCreateUser(githubId, githubUsername, avatarUrl, encryptedToken, pool) {
+async function findOrCreateUser(githubId: number, githubUsername: string, avatarUrl: string, encryptedToken: string, pool: Pool) {
     console.log(`Finding or creating user for githubId: ${githubId}`);
 
     const selectQuery = 'SELECT id FROM users WHERE github_id = $1';
@@ -173,7 +191,7 @@ async function findOrCreateUser(githubId, githubUsername, avatarUrl, encryptedTo
         userId = insertResult.rows[0].id;
     }
     console.log(`User operation successful. App User ID: ${userId}`);
-    return { id: userId };
+    return userId;
 }
 
 app.use(cors({
@@ -223,6 +241,7 @@ app.get('/api/my-prs', isAuthenticated, async (req: Request, res: Response) => {
     try {
         // Get user from session
         const userId = req.session.userId;
+        const githubLogin = req.session.githubUsername;
 
         // Find user in database
         const userResult = await pool.query(
@@ -267,8 +286,25 @@ app.get('/api/my-prs', isAuthenticated, async (req: Request, res: Response) => {
                                 reviews(last: 5) {
                                     nodes {
                                         state
+                                        submittedAt
                                         author {
                                             login
+                                        }
+                                    }
+                                }
+
+                                # --- V2 DATA (LABELS) ---
+                                labels(first: 10) {
+                                    nodes {
+                                        name
+                                    }
+                                }
+
+                                # --- V2 DATA (COMMITS) ---
+                                commits(last: 20) {
+                                    nodes {
+                                        commit {
+                                            committedDate
                                         }
                                     }
                                 }
@@ -281,19 +317,32 @@ app.get('/api/my-prs', isAuthenticated, async (req: Request, res: Response) => {
 
         // Get data from GitHub
         const octokit = new Octokit({ auth: accessToken });
-        const githubResponse = await octokit.graphql(
+        const githubResponse: any = await octokit.graphql(
             GQL_QUERY,
             {
                 queryString: "is:pr is:open review-requested:gaearon"
             }
         );
 
-        console.log("GitHub Response:", githubResponse);
-        const prs = githubResponse.search.edges.map(edge => edge.node);
-        res.status(200).json({ prs: prs });
+        console.log("GitHub Response:", JSON.stringify(githubResponse, null, 2));
+        const prs: GitHubPR[] = githubResponse.search.edges.map((edge: any) => {
+            const node = edge.node;
+            return {
+                ...node,
+                labels: node.labels?.nodes || [],
+                reviews: node.reviews?.nodes || [],
+                commits: node.commits?.nodes || []
+            };
+        });
+        const filteredAndRankedPRs: GitHubPR[] = prioritizePRs(prs, githubLogin)
+        res.status(200).json({ prs: filteredAndRankedPRs });
 
     } catch (error) {
-        console.error("Failed to get PRs from GitHub:", error);
+        if (axios.isAxiosError(error)) {
+            console.error("GitHub API Error:", error.response?.data);
+        } else {
+            console.error("Failed to get PRs from GitHub:", error);
+        }
         res.status(500).json({ error: 'Failed to fetch PRs from GitHub' });
     }
 });
@@ -317,7 +366,9 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response) => {
         console.error('State mismatch or missing state!');
         // Clear compromised session state
         if (req.session) {
-            req.session.destroy();
+            req.session.destroy((err) => {
+                if (err) console.error('Error destroying session:', err);
+            });
         }
         return res.status(403).send('Invalid state parameter. Possible CSRF attack.');
     }
@@ -368,13 +419,13 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response) => {
         console.log("Token Type:", tokenType);
 
         // Get user info using access tokens
-        const githubUser = await getGitHubUserInfo(accessToken);
+        const githubUser: GitHubUser = await getGitHubUserInfo(accessToken);
         const githubId = githubUser.id;
-        const githubUsername = githubUser.id;
-        const avatarUrl = githubUser.avatar_url;
+        const githubUsername = githubUser.login;
+        const avatarUrl = githubUser.avatarUrl;
 
         // Update or create new user in database
-        const appUser = await findOrCreateUser(githubId, githubUsername, avatarUrl, accessToken, pool);
+        const userId = await findOrCreateUser(githubId, githubUsername, avatarUrl, accessToken, pool);
 
         // Regenerate session and add user ID to new session
         console.log("Regenerating session and storing user ID...");
@@ -386,8 +437,10 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response) => {
         }
 
         // Store your application's user ID in the new session
-        req.session.userId = appUser.id; // Store the ID from YOUR users table
-        console.log(`Stored appUser.id (${appUser.id}) in new session: ${req.session}`);
+        req.session.userId = userId; // Store the ID from YOUR users table
+        req.session.githubUsername = githubUsername;
+        req.session.githubId = githubId;
+        console.log(`Stored appUser.id (${userId}) in new session: ${req.session}`);
 
 
         // Save the regenerated session before redirecting
@@ -404,19 +457,21 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response) => {
 
     } catch (error) {
         // Handle errors
-        console.error("Error during token exchange:", error.message);
-
-        if (error.response) {
-            console.error("GitHub Error Response Status:", error.response.status);
-            console.error("GitHub Error Response Data:", error.response.data);
-        } else if (error.request) {
-            console.error("Error: No response received from GitHub token endpoint.");
+        if (axios.isAxiosError(error)) {
+            console.error("Error during token exchange");
+            console.error("GitHub Error Response Status:", error.response?.status);
+            console.error("GitHub Error Response Data:", error.response?.data);
+            if (!error.response) {
+                console.error("Error: No response received from GitHub token endpoint.");
+            }
+        } else {
+            console.error("Unexpected error during token exchange:", error);
         }
 
         // Destroy session if token exchange failed
         if (req.session) {
             req.session.destroy((destroyErr) => {
-                if (destroyError) console.error("Error destroying session after token exchange error:", destroyErr);
+                if (destroyErr) console.error("Error destroying session after token exchange error:", destroyErr);
             });
         }
         res.status(500).send('Authentication failed: Could not exchange code for token.');

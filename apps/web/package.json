@@ -7,5 +7,17 @@
         "build": "next build --turbopack",
         "start": "next start",
         "lint": "next lint"
+    },
+    "dependencies": {
+        "@repo/shared-types": "*",
+        "next": "15.5.6",
+        "react": "^19",
+        "react-dom": "^19"
+    },
+    "devDependencies": {
+        "@types/node": "^20",
+        "@types/react": "^19",
+        "@types/react-dom": "^19",
+        "typescript": "^5"
     }
 }

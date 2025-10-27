@@ -2,7 +2,9 @@
 
 import React from 'react';
 import { useEffect, useState } from 'react';
+import { GitHubPR } from '@repo/shared-types';
 
+/*
 interface PullRequest {
     id: number;
     title: string;
@@ -28,6 +30,7 @@ interface PullRequest {
         }[];
     };
 }
+*/
 
 // Helper function to show "X days ago"
 function timeAgo(dateString: string): string {
@@ -59,7 +62,7 @@ function getRepoName(url: string) {
 }
 
 export default function DashboardPage() {
-    const [prs, setPrs] = useState<PullRequest[]>([]);
+    const [prs, setPrs] = useState<GitHubPR[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
