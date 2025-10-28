@@ -10,7 +10,7 @@ import '../types/session.types.js';
 const router = Router();
 
 // GitHub Login Route
-router.get('/login', async (req: Request, res: Response) => {
+router.get('/login', async (req: Request, res: Response): Promise<void> => {
     // GitHub Login API for generating and storing state
     console.log("GitHub Login API Called!");
 
@@ -44,11 +44,12 @@ router.get('/login', async (req: Request, res: Response) => {
 
         const authorizeUrl = `https://github.com/login/oauth/authorize/?${params.toString()}`;
         res.redirect(authorizeUrl);
+        return;
     });
 });
 
 // GitHub OAuth Callback Route
-router.get('/callback', async (req: Request, res: Response) => {
+router.get('/callback', async (req: Request, res: Response): Promise<void> => {
     // Callback logic
     console.log("Received callback from GitHub!");
 
@@ -70,7 +71,8 @@ router.get('/callback', async (req: Request, res: Response) => {
                 if (err) console.error('Error destroying session:', err);
             });
         }
-        return res.status(403).send('Invalid state parameter. Possible CSRF attack.');
+        res.status(403).send('Invalid state parameter. Possible CSRF attack.');
+        return;
     }
 
     delete req.session.oauth_state;
@@ -149,9 +151,10 @@ router.get('/callback', async (req: Request, res: Response) => {
                 console.log("Regenerated session saved. Redirecting to frontend...");
                 const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
                 res.redirect(`${frontendUrl}/dashboard`);
+                return;
             });
+            return;
         });
-
     } catch (error) {
         // Handle errors
         if (axios.isAxiosError(error)) {
@@ -172,6 +175,7 @@ router.get('/callback', async (req: Request, res: Response) => {
             });
         }
         res.status(500).send('Authentication failed: Could not exchange code for token.');
+        return;
     }
 });
 

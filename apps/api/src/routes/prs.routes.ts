@@ -9,7 +9,7 @@ import '../types/session.types.js';
 
 const router = Router();
 
-router.get('/', isAuthenticated, async (req: Request, res: Response) => {
+router.get('/', isAuthenticated, async (req: Request, res: Response): Promise<void> => {
     console.log("Received request to get user PRs.");
 
     try {
@@ -24,7 +24,8 @@ router.get('/', isAuthenticated, async (req: Request, res: Response) => {
         );
 
         if (userResult.rows.length === 0) {
-            return res.status(404).json({ error: 'User not found' });
+            res.status(404).json({ error: 'User not found' });
+            return;
         }
 
         // Get user's stored GitHub access token
