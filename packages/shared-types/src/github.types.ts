@@ -41,4 +41,5 @@ export interface GitHubPR {
     labels?: GitHubLabel[];
     commits?: GitHubCommit[];
     urgencyScore?: number;
+    reason?: string;
 }

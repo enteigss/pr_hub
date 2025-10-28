@@ -4,34 +4,6 @@ import React from 'react';
 import { useEffect, useState } from 'react';
 import { GitHubPR } from '@repo/shared-types';
 
-/*
-interface PullRequest {
-    id: number;
-    title: string;
-    url: string;
-    draft: boolean;
-    created_at: string;
-    updated_at: string;
-    repository: {
-        nameWithOwner: string;
-    }
-    author: {
-        login: string;
-        avatarUrl: string;
-    } | null;
-    additions: number;
-    deletions: number;
-    reviews: {
-        nodes: {
-            state: string;
-            author: {
-                login: string;
-            } | null;
-        }[];
-    };
-}
-*/
-
 // Helper function to show "X days ago"
 function timeAgo(dateString: string): string {
   const date = new Date(dateString);
@@ -107,45 +79,56 @@ export default function DashboardPage() {
                     // PR Card
                     <div key={pr.id}
                     // Gray out draft PRs
-                    className={`flex items-start gap-4 p-4 bg-white border rounded-lg shadow-sm
+                    className={`flex flex-col p-4 bg-white border rounded-lg shadow-sm
                     ${pr.draft ? 'opacity-60' : ''}`}
                     >
-                        {/* Column 1: Avatar */}
-                        <img 
-                            src={pr.author.avatarUrl}
-                            alt={pr.author.login}
-                            className="w-10 h-10 rounded-full"
-                        />
+                        {/* Existing row content */}
+                        <div className="flex items-start gap-4">
+                            {/* Column 1: Avatar */}
+                            <img
+                                src={pr.author.avatarUrl}
+                                alt={pr.author.login}
+                                className="w-10 h-10 rounded-full"
+                            />
 
-                        {/* Column 2: PR Info */}
-                        <div className="flex-1">
+                            {/* Column 2: PR Info */}
+                            <div className="flex-1">
 
-                            {/* Repo name + Draft Badge */}
-                            <div className='flex justify-between items-center'>
-                                <p className="text-sm text-gray-500">
-                                    {getRepoName(pr.repository.nameWithOwner)}
+                                {/* Repo name + Draft Badge */}
+                                <div className='flex justify-between items-center'>
+                                    <p className="text-sm text-gray-500">
+                                        {getRepoName(pr.repository.nameWithOwner)}
+                                    </p>
+                                    {pr.draft && (
+                                        <span className="px-2 py-0.5 text-xs font-semibold text-gray-700 bg-gray-200 rounded-full">
+                                            Draft
+                                        </span>
+                                    )}
+                                </div>
+
+                                <a
+                                    href={pr.url}
+                                    className="text-lg font-semibold text-blue-600 hover:underline"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    {pr.title}
+                                </a>
+
+                                {/* Author + Date (meta info) */}
+                                <p className="text-sm text-gray-500 mt-1">
+                                    Authored by <span className="font-medium text-gray-700">{pr.author.login}</span>
+                                    <span> &bull; {timeAgo(pr.created_at)} </span>
                                 </p>
-                                {pr.draft && (
-                                    <span className="px-2 py-0.5 text-xs font-semibold text-gray-700 bg-gray-200 rounded-full">
-                                        Draft
-                                    </span>
-                                )}
                             </div>
                         </div>
-                        <a
-                            href={pr.url}
-                            className="text-lg font-semibold text-blue-600 hover:underline"
-                            target="_blank"
-                            rel="noopener noreferrer"
-                        >
-                            {pr.title}
-                        </a>
 
-                        {/* Author + Date (meta info) */}
-                        <p className="text-sm text-gray-500 mt-1">
-                            Authored by <span className="font-medium text-gray-700">{pr.author.login}</span>
-                            <span> &bull; {timeAgo(pr.created_at)} </span>
-                        </p>
+                        {/* Reason row - NEW ROW at bottom of card */}
+                        {pr.reason && (
+                            <p className="text-sm text-gray-600 mt-2 pt-2 border-t border-gray-200">
+                                <span className="font-medium">Priority reason:</span> {pr.reason}
+                            </p>
+                        )}
                     </div>
                 ))}
             </div>
