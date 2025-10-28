@@ -25,15 +25,14 @@ router.get('/login', async (req: Request, res: Response) => {
             return res.status(500).send('Error initiating login');
         }
 
-        const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23ctAkZYibG05rDDT8';
-        const GITHUB_REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || 'http://localhost:5000/api/auth/github/callback';
+        const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+        const GITHUB_REDIRECT_URI = process.env.GITHUB_REDIRECT_URI;
 
         console.log("GITHUB_CLIENT_ID:", GITHUB_CLIENT_ID);
 
         if (!GITHUB_CLIENT_ID || !GITHUB_REDIRECT_URI) {
             console.error('Missing GitHub OAuth environment variables!');
-            // Handle error
-            return;
+            return res.status(500).send('Missing GitHub OAuth configuration');
         }
 
         const params = new URLSearchParams({
@@ -78,9 +77,9 @@ router.get('/callback', async (req: Request, res: Response) => {
 
     // Exchange authorization code for access tokens
     try {
-        const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID || 'Ov23ctAkZYibG05rDDT8';
-        const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET || '09e7e2aef9d6133a8d82ef0e0295f6058452abce';
-        const GITHUB_REDIRECT_URI = process.env.GITHUB_REDIRECT_URI || 'http://localhost:5000/api/auth/github/callback';
+        const GITHUB_CLIENT_ID = process.env.GITHUB_CLIENT_ID;
+        const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET;
+        const GITHUB_REDIRECT_URI = process.env.GITHUB_REDIRECT_URI;
 
         // Prepare request data
         const tokenUrl = 'https://github.com/login/oauth/access_token';
@@ -148,7 +147,8 @@ router.get('/callback', async (req: Request, res: Response) => {
                 }
 
                 console.log("Regenerated session saved. Redirecting to frontend...");
-                res.redirect('http://localhost:3000/dashboard');
+                const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+                res.redirect(`${frontendUrl}/dashboard`);
             });
         });
 
