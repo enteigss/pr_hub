@@ -1,8 +1,8 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 
 const router = Router();
 
-router.get('/', (req: Request, res: Response) => {
+router.get('/', (res: Response) => {
     res.send('Hello from the backend API!');
 });
 
