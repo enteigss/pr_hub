@@ -56,6 +56,12 @@ router.get('/callback', async (req: Request, res: Response): Promise<void> => {
     // Get code and state from query parameters
     const code = req.query.code;
     const returnedState = req.query.state;
+
+    // Debug session
+    console.log("Session ID:", req.sessionID);
+    console.log("Session object:", req.session);
+    console.log("Session oauth_state:", req.session?.oauth_state);
+
     const originalState = req.session.oauth_state;
 
     console.log("Received Code:", code);
