@@ -4,8 +4,9 @@ import React from 'react';
 export default function Home() {
 
   const handleGitHubLogin = () => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
     console.log("Redirecting browser to backend login endpoint.");
-    window.location.href = '/api/auth/github/login';
+    window.location.href = `${apiUrl}/api/auth/github/login`;
   }
 
   return (
