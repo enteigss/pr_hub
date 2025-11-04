@@ -41,7 +41,8 @@ export default function DashboardPage() {
     useEffect(() => {
         async function fetchPullRequests() {
             try {
-                const response = await fetch('/api/my-prs', {
+                const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+                const response = await fetch(`${backendUrl}/api/my-prs`, {
                     credentials: 'include'
                 });
                 if (!response.ok) {
