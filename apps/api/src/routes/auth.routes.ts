@@ -45,6 +45,12 @@ router.get('/login', async (req: Request, res: Response): Promise<void> => {
         });
 
         const authorizeUrl = `https://github.com/login/oauth/authorize/?${params.toString()}`;
+
+        // Log response headers when they're sent
+        res.on('finish', () => {
+            console.log('Response headers sent:', res.getHeaders());
+        });
+
         res.redirect(authorizeUrl);
         return;
     });
