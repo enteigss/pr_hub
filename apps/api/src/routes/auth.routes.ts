@@ -13,6 +13,8 @@ const router = Router();
 router.get('/login', async (req: Request, res: Response): Promise<void> => {
     // GitHub Login API for generating and storing state
     console.log("GitHub Login API Called!");
+    console.log("Login Session ID:", req.sessionID);
+    console.log("Login Session object:", req.session);
 
     // Generate state
     const state = crypto.randomUUID();
