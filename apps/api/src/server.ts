@@ -20,6 +20,9 @@ import prsRouter from './routes/prs.routes.js';
 // Create app instance
 const app = express();
 
+// Trust proxy - required for secure cookies behind reverse proxy (Render/Cloudflare)
+app.set('trust proxy', 1);
+
 // CORS middleware
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:3000',

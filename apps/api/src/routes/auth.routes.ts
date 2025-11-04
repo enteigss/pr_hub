@@ -46,18 +46,9 @@ router.get('/login', async (req: Request, res: Response): Promise<void> => {
 
         const authorizeUrl = `https://github.com/login/oauth/authorize/?${params.toString()}`;
 
-        // Log response headers when they're sent
+        // Log response headers when they're sent (for debugging)
         res.on('finish', () => {
             console.log('Response headers sent:', res.getHeaders());
-        });
-
-        // Manually set cookie to test
-        console.log("Manually setting test cookie");
-        res.cookie('test_cookie', 'test_value', {
-            httpOnly: true,
-            secure: true,
-            sameSite: 'none',
-            maxAge: 1000 * 60 * 60
         });
 
         res.redirect(authorizeUrl);
