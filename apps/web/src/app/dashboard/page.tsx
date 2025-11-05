@@ -42,6 +42,8 @@ export default function DashboardPage() {
         async function fetchPullRequests() {
             try {
                 const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+                console.log('NEXT_PUBLIC_API_URL:', process.env.NEXT_PUBLIC_API_URL);
+                console.log('Using backendUrl:', backendUrl);
                 const response = await fetch(`${backendUrl}/api/my-prs`, {
                     credentials: 'include'
                 });
