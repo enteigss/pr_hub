@@ -123,7 +123,7 @@ User redirected to Dashboard
 
 ## Live Demo
 
-**[Try PR Hub Live →](https://pr-hub-web.vercel.app/)** *(Add your deployment URL here)*
+**[Try PR Hub Live](https://pr-hub-web.vercel.app/)**
 
 Experience the unified PR inbox firsthand - log in with your GitHub account to see all your pull requests in one place.
 
@@ -179,9 +179,7 @@ MIT
 
 ## Contact
 
-Your Name - [your-email@example.com](mailto:your-email@example.com)
-
-Project Link: [https://github.com/yourusername/pr-hub-monorepo](https://github.com/yourusername/pr-hub-monorepo)
+Email: jordan.anderson.green@gmail.com
 
 ---
 
