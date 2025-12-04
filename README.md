@@ -123,7 +123,7 @@ User redirected to Dashboard
 
 ## Live Demo
 
-**[Try PR Hub Live](https://pr-hub-web.vercel.app/)**
+**[Try PR Hub Live](https://pr-hub-frontend.vercel.app/)**
 
 Experience the unified PR inbox firsthand - log in with your GitHub account to see all your pull requests in one place.
 
